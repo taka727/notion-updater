@@ -1,0 +1,5 @@
+aws ssm put-parameter \
+  --name "/notion/token" \
+  --type "SecureString" \
+  --value "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" \
+  --region ap-northeast-1
