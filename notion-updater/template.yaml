@@ -18,7 +18,7 @@ Resources:
       CodeUri: hello_world/
       Handler: app.lambda_handler
       Runtime: python3.11
-      Timeout: 30
+      Timeout: 900
       MemorySize: 256
       Architectures:
         - x86_64
@@ -28,10 +28,15 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource:
-                - arn:aws:ssm:ap-northeast-1:*:parameter/notion/token
+                - arn:aws:ssm:ap-northeast-1:*:parameter/notion_updater/*
       Events:
         DailyTrigger:
           Type: Schedule
           Properties:
             Schedule: cron(0 18 * * ? *)
+      Environment:
+        Variables:
+          NOTION_TOKEN_PARAM: "/notion_updater/notion_token"
+          DATABASE_ID_PARAM: "/notion_updater/database_id"
+          PARENT_PAGE_ID_PARAM: "/notion_updater/parent_page_id"
 
