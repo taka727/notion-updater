@@ -4,12 +4,25 @@ from datetime import datetime
 from dotenv import load_dotenv
 import re
 from dateutil import parser
+import boto3
 
-load_dotenv()
 
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-DATABASE_ID = os.getenv("DATABASE_ID")
-PARENT_PAGE_ID = os.getenv("PARENT_PAGE_ID")
+def get_env(name):
+    if os.getenv("AWS_EXECUTION_ENV"):
+        param_name = os.getenv(f"{name}_PARAM")
+        if not param_name:
+            raise Exception(f"Missing environment variable: {name}_PARAM")
+
+        ssm = boto3.client("ssm", region_name="ap-northeast-1")
+        response = ssm.get_parameter(Name=param_name, WithDecryption=True)
+        return response["Parameter"]["Value"]
+    else:
+        load_dotenv()
+        return os.getenv(name)
+
+NOTION_TOKEN = get_env("NOTION_TOKEN")
+DATABASE_ID = get_env("DATABASE_ID")
+PARENT_PAGE_ID = get_env("PARENT_PAGE_ID")
 
 headers = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -17,6 +30,8 @@ headers = {
     "Content-Type": "application/json",
 }
 
+def log(msg):
+    print(f"[NotionBot] {msg}")
 
 def extract_english_terms(title: str) -> str:
     words = re.findall(r'[A-Za-z0-9]+', title)
@@ -44,12 +59,14 @@ def get_child_pages_from_column_lists(parent_id):
 
 # 1. データベースの全ページ（行）を取得
 def get_all_pages(database_id):
+    log("前ページ取得スタート")
     url = f"https://api.notion.com/v1/databases/{database_id}/query"
     res = requests.post(url, headers=headers)
     return res.json().get("results", [])
 
 # ヘルパー関数：ブロックの子要素を取得
 def get_child_pages_recursively(parent_id):
+    log("ブロックの子要素取得")
     url = f"https://api.notion.com/v1/blocks/{parent_id}/children?page_size=100"
     res = requests.get(url, headers=headers)
     blocks = res.json().get("results", [])
@@ -73,6 +90,7 @@ def get_child_pages_recursively(parent_id):
     return found_pages
   
 def add_to_database(page_title, page_id, created_time, last_edited_time):
+    log("データベースにページを追加")
     url = "https://api.notion.com/v1/pages"
     format_title = extract_english_terms(page_title)
     format_page_id = page_id.replace('-', '')
@@ -114,6 +132,7 @@ def add_to_database(page_title, page_id, created_time, last_edited_time):
         print(f"✅ 登録済: {page_title} 作成日：{created_time} 最終更新日：{last_edited_time}")
 
 def update_page(notion_page_id, page_title, page_url, created_time, last_edited_time,count,status):
+    log("既存のページを更新")
     url = f"https://api.notion.com/v1/pages/{notion_page_id}"
     data = {
         "properties": {
@@ -140,6 +159,10 @@ def update_page(notion_page_id, page_title, page_url, created_time, last_edited_
         print(f"🔄 更新済: {page_title}")
 
 def main():
+    log("データベースアップデートスタート")
+    print(NOTION_TOKEN)
+    print(DATABASE_ID)
+    print(PARENT_PAGE_ID)
     existing_pages = get_all_pages(DATABASE_ID)
     existing_title_map = {}
     for page in existing_pages:
@@ -165,6 +188,7 @@ def main():
         format_title = extract_english_terms(title)
         format_page_id = page_id.replace('-', '')
         page_url = f"https://www.notion.so/{format_title}-{format_page_id}"
+        is_update = False
 
         if title in existing_title_map:
             exist_date_time = parser.parse(existing_title_map[title]["date_for_comparison"])
@@ -172,6 +196,8 @@ def main():
             new_elapsed = existing_title_map[title]["elapsed_days"] + 1
             status = existing_title_map[title]["status"]
             count = existing_title_map[title]["count"]
+            print(existing_title_map)
+            print(new_elapsed)
             if existing_title_map[title]["count"] == 0 :
                 if new_elapsed == 1:
                     status = "第一復習"
@@ -186,7 +212,7 @@ def main():
                     is_update = True
             elif existing_title_map[title]["count"] == 4:
                 if new_elapsed == 5:
-                    status == "定着確認"
+                    status = "定着確認"
                     is_update = True
             else:
                 status = "完了"
@@ -194,11 +220,13 @@ def main():
             if exist_date_time < edited_date_time :
                 count = count + 1
                 is_update = True
-
+            print(is_update)
             if is_update:
                 update_page(existing_title_map[title]["id"],title,page_url,created,edited,count,status)
         else:
             add_to_database(title, page_id, created, edited)
+    log("データベースのアップデート完了")
+    
 
 if __name__ == "__main__":
     main()

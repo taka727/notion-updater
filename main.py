@@ -5,7 +5,13 @@ from dotenv import load_dotenv
 import re
 from dateutil import parser
 
-load_dotenv()
+def get_env(name):
+    if os.getenv("AWS_EXECUTION_ENV"):
+        # Lambda上（.envは使えない）
+        return os.getenv(name)
+    else:
+        load_dotenv()
+        return os.getenv(name)
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 DATABASE_ID = os.getenv("DATABASE_ID")
